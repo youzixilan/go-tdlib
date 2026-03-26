@@ -1,8 +1,8 @@
 package client
 
 /*
-#cgo CFLAGS: -I/Users/aqin/dev/tdlib-build/install/include
-#cgo LDFLAGS: -L/Users/aqin/dev/tdlib-build/install/lib -ltdjson
+#cgo CFLAGS: -I${SRCDIR}/../tdlib/include
+#cgo LDFLAGS: -L${SRCDIR}/../tdlib/lib -ltdjson
 #include <stdlib.h>
 #include <td/telegram/td_json_client.h>
 #include <td/telegram/td_log.h>

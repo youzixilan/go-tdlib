@@ -447,7 +447,28 @@ func cmdLogout(c *client.Client) {
 
 func resolveChatID(c *client.Client, chatArg string) int64 {
 	var chatID int64
-	if _, err := fmt.Sscanf(chatArg, "%d", &chatID); err == nil {
+	n, err := fmt.Sscanf(chatArg, "%d", &chatID)
+	if err == nil && n == 1 {
+		// negative IDs are already chat IDs (groups/channels)
+		if chatID < 0 {
+			return chatID
+		}
+		// positive IDs might be user IDs — try createPrivateChat
+		resp, err := c.SendAndWait(map[string]interface{}{
+			"@type":   "createPrivateChat",
+			"user_id": chatID,
+			"force":   false,
+		}, 10*time.Second)
+		if err == nil {
+			var chat struct {
+				ID int64 `json:"id"`
+			}
+			json.Unmarshal(resp, &chat)
+			if chat.ID != 0 {
+				return chat.ID
+			}
+		}
+		// fallback: use as-is
 		return chatID
 	}
 	// search by username

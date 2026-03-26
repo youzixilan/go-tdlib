@@ -123,13 +123,16 @@ func (c *Client) Updates() <-chan json.RawMessage {
 // Close destroys the TDLib client.
 func (c *Client) Close() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed {
+		c.mu.Unlock()
 		return
 	}
 	c.closed = true
-	C.td_json_client_destroy(c.id)
+	c.mu.Unlock()
 	close(c.done)
+	// wait for receiver to exit (it uses 1s timeout on receive)
+	time.Sleep(1500 * time.Millisecond)
+	C.td_json_client_destroy(c.id)
 }
 
 func (c *Client) receiver() {
@@ -140,9 +143,16 @@ func (c *Client) receiver() {
 		default:
 		}
 
-		result := C.td_json_client_receive(c.id, C.double(c.timeout))
+		result := C.td_json_client_receive(c.id, C.double(1.0))
 		if result == nil {
 			continue
+		}
+
+		// check if client is closing
+		select {
+		case <-c.done:
+			return
+		default:
 		}
 
 		data := json.RawMessage(C.GoString(result))

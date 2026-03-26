@@ -60,7 +60,7 @@ func main() {
 	go handleUpdates(c, apiID, apiHash, dataDir)
 
 	// wait for authorization
-	if !waitForAuth(c, 30*time.Second) {
+	if !waitForAuth(c, 120*time.Second) {
 		fmt.Fprintln(os.Stderr, "error: authorization timeout")
 		os.Exit(1)
 	}
@@ -128,6 +128,14 @@ func handleUpdates(c *client.Client, apiID, apiHash, dataDir string) {
 		json.Unmarshal(update, &meta)
 
 		switch meta.Type {
+		case "error":
+			var e struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			}
+			json.Unmarshal(update, &e)
+			fmt.Fprintf(os.Stderr, "[error] code=%d message=%s\n", e.Code, e.Message)
+
 		case "updateAuthorizationState":
 			var u struct {
 				State json.RawMessage `json:"authorization_state"`
@@ -137,21 +145,22 @@ func handleUpdates(c *client.Client, apiID, apiHash, dataDir string) {
 				Type string `json:"@type"`
 			}
 			json.Unmarshal(u.State, &state)
+			fmt.Fprintf(os.Stderr, "[debug] auth state: %s\n", state.Type)
 
 			switch state.Type {
 			case "authorizationStateWaitTdlibParameters":
 				c.Send(map[string]interface{}{
-					"@type":                    "setTdlibParameters",
-					"database_directory":       filepath.Join(dataDir, "db"),
-					"files_directory":          filepath.Join(dataDir, "files"),
-					"use_message_database":     true,
-					"use_secret_chats":         false,
-					"api_id":                   apiID,
-					"api_hash":                 apiHash,
-					"system_language_code":     "en",
-					"device_model":             "tgctl",
-					"application_version":      "1.0.0",
-					"use_test_dc":              false,
+					"@type":                "setTdlibParameters",
+					"database_directory":   filepath.Join(dataDir, "db"),
+					"files_directory":      filepath.Join(dataDir, "files"),
+					"use_message_database": true,
+					"use_secret_chats":     false,
+					"api_id":               apiID,
+					"api_hash":             apiHash,
+					"system_language_code": "en",
+					"device_model":         "tgctl",
+					"application_version":  "1.0.0",
+					"use_test_dc":          false,
 				})
 
 			case "authorizationStateWaitPhoneNumber":
@@ -295,11 +304,11 @@ func cmdCreateBot(c *client.Client, name, username string) {
 	// wait and read last messages to find token
 	time.Sleep(3 * time.Second)
 	resp, err := c.SendAndWait(map[string]interface{}{
-		"@type":   "getChatHistory",
-		"chat_id": botFatherID,
-		"limit":   5,
+		"@type":           "getChatHistory",
+		"chat_id":         botFatherID,
+		"limit":           5,
 		"from_message_id": 0,
-		"offset": 0,
+		"offset":          0,
 	}, 10*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading BotFather response: %v\n", err)

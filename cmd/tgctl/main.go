@@ -15,15 +15,21 @@ import (
 const usage = `tgctl - Telegram CLI powered by TDLib
 
 Usage:
-  tgctl login                          Login to Telegram
-  tgctl me                             Show current user info
-  tgctl send <chat> <message>          Send a message
-  tgctl chats [limit]                  List chats
-  tgctl create-bot <name> <username>   Create a new bot via BotFather
-  tgctl history <chat> [limit]         Get chat history
-  tgctl search <query>                 Search public chats
-  tgctl contacts                       List contacts
-  tgctl logout                         Logout
+  tgctl [--profile <name>] <command> [args...]
+
+Commands:
+  login                          Login to Telegram
+  me                             Show current user info
+  send <chat> <message>          Send a message
+  chats [limit]                  List chats
+  create-bot <name> <username>   Create a new bot via BotFather
+  history <chat> [limit]         Get chat history
+  search <query>                 Search public chats
+  contacts                       List contacts
+  logout                         Logout
+
+Options:
+  --profile <name>               Use named profile (default: "default")
 
 Environment:
   TELEGRAM_API_ID       Telegram API ID (required)
@@ -33,7 +39,19 @@ Environment:
 `
 
 func main() {
-	if len(os.Args) < 2 {
+	args := os.Args[1:]
+	if len(args) == 0 {
+		fmt.Print(usage)
+		os.Exit(1)
+	}
+
+	// parse --profile
+	profile := "default"
+	if len(args) >= 2 && args[0] == "--profile" {
+		profile = args[1]
+		args = args[2:]
+	}
+	if len(args) == 0 {
 		fmt.Print(usage)
 		os.Exit(1)
 	}
@@ -50,6 +68,7 @@ func main() {
 		home, _ := os.UserHomeDir()
 		dataDir = filepath.Join(home, ".tgctl")
 	}
+	dataDir = filepath.Join(dataDir, profile)
 	os.MkdirAll(dataDir, 0700)
 
 	client.SetLogVerbosity(1)
@@ -65,7 +84,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	cmd := os.Args[1]
+	cmd := args[0]
+	// shift args so sub-commands see their own args
+	os.Args = append([]string{os.Args[0]}, args...)
 	switch cmd {
 	case "login":
 		fmt.Println("Logged in successfully.")

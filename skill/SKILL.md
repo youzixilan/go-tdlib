@@ -1,11 +1,11 @@
 ---
 name: telegram-cli
-description: Manage Telegram via pure Go client (gotd/td) - login, send messages, list chats, search, view history, manage contacts, listen for messages. Use when user asks to interact with Telegram as a user account (not bot API), send messages via Telegram, list Telegram chats, or search Telegram.
+description: Manage Telegram via tgctl CLI - login, send messages, forward, edit, delete, pin, search messages, list chats/members, join/leave groups, kick/invite users, block/unblock, send files, download media, start bots, listen for messages. Use when user asks to interact with Telegram as a user account (not bot API).
 ---
 
 # Telegram CLI (tgctl)
 
-User-account-level Telegram management. Pure Go, no CGO.
+User-account-level Telegram management via tgctl CLI.
 
 ## First-Time Setup
 
@@ -23,7 +23,7 @@ Ask the user to go to https://my.telegram.org → API Development → get `api_i
 ```bash
 TELEGRAM_API_ID=<id> TELEGRAM_API_HASH=<hash> tgctl login
 ```
-User enters phone number, auth code, and optional 2FA password interactively.
+User enters phone number, auth code (digits only, no spaces), and optional 2FA password interactively.
 
 **Important:** Auth codes must NOT be sent via Telegram (will be invalidated).
 
@@ -52,27 +52,45 @@ TELEGRAM_API_ID=<id> TELEGRAM_API_HASH=<hash> tgctl [--profile <name>] <command>
 |---------|-------------|
 | `login` | Login (phone + code + optional 2FA) |
 | `me` | Current user info |
-| `send <chat> <msg>` | Send message (user ID, chat ID, or @username) |
+| `send <chat> <msg>` | Send message |
+| `forward <from> <to> <msg_id>` | Forward a message |
+| `edit <chat> <msg_id> <text>` | Edit a message |
+| `delete <chat> <msg_id>` | Delete a message |
+| `pin <chat> <msg_id>` | Pin a message |
+| `unpin <chat> [msg_id]` | Unpin message (or all) |
+| `read <chat>` | Mark chat as read |
 | `chats [limit]` | List chats |
 | `history <chat> [limit]` | Chat history |
 | `search <query>` | Search chats and users |
+| `search-msg <chat> <query>` | Search messages in chat |
 | `contacts` | List contacts |
-| `listen [--user id] [--chat id]` | Real-time message listener |
+| `members <chat> [limit]` | List group/channel members |
+| `join <link_or_username>` | Join group/channel |
+| `leave <chat>` | Leave group/channel |
+| `kick <chat> <user>` | Kick user |
+| `invite <chat> <user>` | Invite user |
+| `block <user>` | Block user |
+| `unblock <user>` | Unblock user |
+| `resolve <username>` | Resolve username to ID |
+| `sendfile <chat> <file>` | Send file or image |
+| `download <chat> <msg_id>` | Download media from message |
+| `callback <chat> <msg_id> <data>` | Click inline keyboard button |
+| `startbot <chat> <bot> [param]` | Start bot in chat |
+| `typing <chat>` | Send typing status |
+| `listen [--user id] [--chat id]` | Listen for messages |
 | `logout` | Logout |
 
 ## Multi-Account (--profile)
 
 ```bash
 tgctl --profile work login
-tgctl --profile personal login
 tgctl --profile work me
-tgctl me                       # uses "default" profile
 ```
 
 ## Chat ID Format
 
 - **User**: Positive ID (e.g. `8568316820`)
-- **Group/Channel**: Negative ID (e.g. `-1003805592010`)
+- **Group/Channel**: Negative ID (e.g. `-3842028710`)
 - **@username**: Use directly (e.g. `@BotFather`)
 
 ## Security

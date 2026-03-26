@@ -95,6 +95,14 @@ jobs:
                 cp "$f" "$HOME/.local/tdlib/lib/"
               done
 
+          # create version-less symlinks for -ltdjson
+          cd "$HOME/.local/tdlib/lib"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            ln -sf libtdjson.1.8.62.dylib libtdjson.dylib
+          else
+            ln -sf libtdjson.so.1.8.62 libtdjson.so
+          fi
+
           cp /tmp/td/td/telegram/td_json_client.h "$HOME/.local/tdlib/include/td/telegram/"
           cp /tmp/td/td/telegram/td_log.h "$HOME/.local/tdlib/include/td/telegram/"
 

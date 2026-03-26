@@ -45,15 +45,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	// parse --profile
+	// parse flags
 	profile := "default"
-	if len(args) >= 2 && args[0] == "--profile" {
-		profile = args[1]
-		args = args[2:]
+	for len(args) > 0 {
+		if args[0] == "--profile" && len(args) >= 2 {
+			profile = args[1]
+			args = args[2:]
+		} else if args[0] == "--help" || args[0] == "-h" {
+			fmt.Print(usage)
+			os.Exit(0)
+		} else {
+			break
+		}
 	}
 	if len(args) == 0 {
 		fmt.Print(usage)
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	apiID := os.Getenv("TELEGRAM_API_ID")

@@ -22,11 +22,6 @@ jobs:
             goarch: arm64
             suffix: darwin-arm64
 
-          - os: macos-13
-            goos: darwin
-            goarch: amd64
-            suffix: darwin-amd64
-
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
@@ -37,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
 
@@ -140,7 +135,7 @@ jobs:
             otool -L "./tgctl-${{ matrix.suffix }}" || true
           fi
 
-          "./tgctl-${{ matrix.suffix }}" --help >/dev/null || "./tgctl-${{ matrix.suffix }}" -h >/dev/null || true
+          "./tgctl-${{ matrix.suffix }}" --help
 
       - name: Package
         shell: bash
@@ -164,7 +159,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
 
@@ -183,12 +178,14 @@ jobs:
 
       - name: Build TDLib
         shell: msys2 {0}
+        env:
+          TDLIB_COMMIT_SHA: "0ae923c493bceb75433de2682ba8ae29cc7bf88d"
         run: |
           set -euxo pipefail
 
           git clone https://github.com/tdlib/td.git /c/td
           cd /c/td
-          git checkout "${TDLIB_COMMIT}"
+          git checkout "${TDLIB_COMMIT_SHA}"
 
           mkdir -p build
           cd build
@@ -231,6 +228,7 @@ jobs:
         run: |
           set -euxo pipefail
 
+          export PATH="/c/hostedtoolcache/windows/go/1.25.5/x64/bin:$PATH"
           cd "$GITHUB_WORKSPACE"
           ln -sf /c/tdlib tdlib
 
@@ -282,10 +280,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           Set-Location dist
-          .\tgctl-windows-amd64.exe --help *> $null
-          if ($LASTEXITCODE -ne 0) {
-            .\tgctl-windows-amd64.exe -h *> $null
-          }
+          .\tgctl-windows-amd64.exe --help
 
       - uses: actions/upload-artifact@v4
         with:

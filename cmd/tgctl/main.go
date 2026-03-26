@@ -128,6 +128,8 @@ func main() {
 		cmdSearch(c, os.Args[2])
 	case "contacts":
 		cmdContacts(c)
+	case "listen":
+		cmdListen(c, args[1:])
 	case "logout":
 		cmdLogout(c)
 	default:
@@ -450,6 +452,88 @@ func cmdContacts(c *client.Client) {
 	for _, id := range result.UserIDs {
 		user := getUserInfo(c, id)
 		fmt.Printf("%d  %s\n", id, user)
+	}
+}
+
+func cmdListen(c *client.Client, args []string) {
+	var filterUser int64
+	var filterChat int64
+	for i := 0; i < len(args)-1; i++ {
+		switch args[i] {
+		case "--user":
+			fmt.Sscanf(args[i+1], "%d", &filterUser)
+			i++
+		case "--chat":
+			fmt.Sscanf(args[i+1], "%d", &filterChat)
+			i++
+		}
+	}
+
+	if filterUser != 0 {
+		fmt.Fprintf(os.Stderr, "Listening for messages from user %d...\n", filterUser)
+	} else if filterChat != 0 {
+		fmt.Fprintf(os.Stderr, "Listening for messages in chat %d...\n", filterChat)
+	} else {
+		fmt.Fprintln(os.Stderr, "Listening for all messages... (Ctrl+C to stop)")
+	}
+
+	for update := range c.Updates() {
+		var meta struct {
+			Type string `json:"@type"`
+		}
+		json.Unmarshal(update, &meta)
+		if meta.Type != "updateNewMessage" {
+			continue
+		}
+
+		var u struct {
+			Message struct {
+				ID      int64 `json:"id"`
+				ChatID  int64 `json:"chat_id"`
+				Sender  struct {
+					Type   string `json:"@type"`
+					UserID int64  `json:"user_id"`
+				} `json:"sender_id"`
+				Content struct {
+					Type string `json:"@type"`
+					Text struct {
+						Text string `json:"text"`
+					} `json:"text"`
+					Caption struct {
+						Text string `json:"text"`
+					} `json:"caption"`
+				} `json:"content"`
+				Date       int64 `json:"date"`
+				IsOutgoing bool  `json:"is_outgoing"`
+			} `json:"message"`
+		}
+		json.Unmarshal(update, &u)
+		msg := u.Message
+
+		// apply filters
+		if filterUser != 0 && msg.Sender.UserID != filterUser {
+			continue
+		}
+		if filterChat != 0 && msg.ChatID != filterChat {
+			continue
+		}
+
+		t := time.Unix(msg.Date, 0).Format("15:04:05")
+		text := msg.Content.Text.Text
+		if text == "" {
+			text = msg.Content.Caption.Text
+		}
+		if text == "" {
+			text = fmt.Sprintf("[%s]", msg.Content.Type)
+		}
+
+		direction := "←"
+		if msg.IsOutgoing {
+			direction = "→"
+		}
+
+		chatName := getChatInfo(c, msg.ChatID)
+		fmt.Printf("[%s] %s %s | %d: %s\n", t, direction, chatName, msg.Sender.UserID, text)
 	}
 }
 

@@ -1,6 +1,6 @@
 ---
 name: telegram-cli
-description: Manage Telegram via tgctl CLI - login, send messages, forward, edit, delete, pin, search messages, list chats/members, join/leave groups, kick/invite users, block/unblock, send files, download media, start bots, listen for messages. Use when user asks to interact with Telegram as a user account (not bot API).
+description: Manage Telegram via tgctl CLI - login, send/forward/edit/delete/pin messages, search, list chats/members, join/leave groups, kick/invite users, block/unblock, send files, download media, start bots, create groups/channels, manage admins, translate messages, update profile, listen for messages. Use when user asks to interact with Telegram as a user account (not bot API).
 ---
 
 # Telegram CLI (tgctl)
@@ -48,10 +48,9 @@ After login succeeds, append to workspace TOOLS.md:
 TELEGRAM_API_ID=<id> TELEGRAM_API_HASH=<hash> tgctl [--profile <name>] <command>
 ```
 
+### Messaging
 | Command | Description |
 |---------|-------------|
-| `login` | Login (phone + code + optional 2FA) |
-| `me` | Current user info |
 | `send <chat> <msg>` | Send message |
 | `forward <from> <to> <msg_id>` | Forward a message |
 | `edit <chat> <msg_id> <text>` | Edit a message |
@@ -59,24 +58,47 @@ TELEGRAM_API_ID=<id> TELEGRAM_API_HASH=<hash> tgctl [--profile <name>] <command>
 | `pin <chat> <msg_id>` | Pin a message |
 | `unpin <chat> [msg_id]` | Unpin message (or all) |
 | `read <chat>` | Mark chat as read |
+| `sendfile <chat> <file>` | Send file or image |
+| `download <chat> <msg_id>` | Download media from message |
+| `callback <chat> <msg_id> <data>` | Click inline keyboard button |
+| `typing <chat>` | Send typing status |
+| `translate <chat> <msg_id> <lang>` | Translate a message |
+
+### Search & Browse
+| Command | Description |
+|---------|-------------|
 | `chats [limit]` | List chats |
 | `history <chat> [limit]` | Chat history |
 | `search <query>` | Search chats and users |
 | `search-msg <chat> <query>` | Search messages in chat |
 | `contacts` | List contacts |
 | `members <chat> [limit]` | List group/channel members |
+| `chatinfo <chat>` | Get chat/user details |
+| `commonchats <user>` | Common chats with user |
+| `resolve <username>` | Resolve username to ID |
+| `resolvephone <phone>` | Resolve phone to user |
+
+### Group & Channel Management
+| Command | Description |
+|---------|-------------|
+| `creategroup <title> <user1> [user2...]` | Create a group |
+| `createchannel <title> [about]` | Create a channel |
 | `join <link_or_username>` | Join group/channel |
 | `leave <chat>` | Leave group/channel |
 | `kick <chat> <user>` | Kick user |
 | `invite <chat> <user>` | Invite user |
+| `editadmin <chat> <user> [remove]` | Set/remove admin |
+| `startbot <chat> <bot> [param]` | Start bot in chat |
+
+### User & Account
+| Command | Description |
+|---------|-------------|
+| `login` | Login (phone + code + optional 2FA) |
+| `me` | Current user info |
+| `updateprofile [--first n] [--last n] [--about t]` | Update profile |
+| `setstatus <online\|offline>` | Set online status |
 | `block <user>` | Block user |
 | `unblock <user>` | Unblock user |
-| `resolve <username>` | Resolve username to ID |
-| `sendfile <chat> <file>` | Send file or image |
-| `download <chat> <msg_id>` | Download media from message |
-| `callback <chat> <msg_id> <data>` | Click inline keyboard button |
-| `startbot <chat> <bot> [param]` | Start bot in chat |
-| `typing <chat>` | Send typing status |
 | `listen [--user id] [--chat id]` | Listen for messages |
 | `logout` | Logout |
 

@@ -35,7 +35,8 @@ if [ "$EXT" = "zip" ]; then
   curl -fSL "$DOWNLOAD_URL" -o "$TMP/tgctl.zip"
   unzip -o "$TMP/tgctl.zip" -d "$TMP"
 else
-  curl -fSL "$DOWNLOAD_URL" -o "$TMP/tgctl-$SUFFIX"
+  curl -fSL "$DOWNLOAD_URL" -o "$TMP/archive.tar.gz"
+  tar xzf "$TMP/archive.tar.gz" -C "$TMP"
 fi
 
 # install binary

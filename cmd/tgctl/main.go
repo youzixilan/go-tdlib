@@ -173,7 +173,7 @@ func doLogin(ctx context.Context, client *telegram.Client) error {
 	}
 
 	codePrompt := auth.CodeAuthenticatorFunc(func(ctx context.Context, sentCode *tg.AuthSentCode) (string, error) {
-		fmt.Print("Auth code: ")
+		fmt.Print("Auth code (digits only, no spaces): ")
 		code, _ := reader.ReadString('\n')
 		return strings.TrimSpace(code), nil
 	})

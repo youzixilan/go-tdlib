@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,6 +16,7 @@ import (
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
 )
 
@@ -23,16 +26,36 @@ Usage:
   tgctl [--profile <name>] <command> [args...]
 
 Commands:
-  login                   Login to Telegram
-  me                      Show current user info
-  send <chat> <message>   Send a message
-  chats [limit]           List chats
-  history <chat> [limit]  Get chat history
-  search <query>          Search public chats
-  contacts                List contacts
-  listen [--user id] [--chat id]  Listen for new messages
-  callback <chat> <msg_id> <data>  Click inline keyboard button
-  logout                  Logout
+  login                              Login to Telegram
+  me                                 Show current user info
+  send <chat> <message>              Send a message
+  chats [limit]                      List chats
+  history <chat> [limit]             Get chat history
+  search <query>                     Search public chats
+  contacts                           List contacts
+  listen [--user id] [--chat id]     Listen for new messages
+  callback <chat> <msg_id> <data>    Click inline keyboard button
+  logout                             Logout
+
+  forward <from_chat> <to_chat> <msg_id>   Forward a message
+  edit <chat> <msg_id> <text>              Edit a message
+  delete <chat> <msg_id>                   Delete a message
+  pin <chat> <msg_id>                      Pin a message
+  unpin <chat> [msg_id]                    Unpin a message (or all)
+  read <chat>                              Mark chat as read
+  search-msg <chat> <query>               Search messages in chat
+  members <chat> [limit]                   List group/channel members
+  join <invite_link_or_username>           Join a group/channel
+  leave <chat>                             Leave a group/channel
+  kick <chat> <user>                       Kick a user from group/channel
+  invite <chat> <user>                     Invite a user to group/channel
+  block <user>                             Block a user
+  unblock <user>                           Unblock a user
+  resolve <username>                       Resolve username to ID
+  sendfile <chat> <file>                   Send a file or image
+  download <chat> <msg_id>                 Download file from a message
+  startbot <chat> <bot> [param]            Start a bot in a chat
+  typing <chat>                            Send typing status
 
 Options:
   --profile <name>        Use named profile (default: "default")
@@ -160,6 +183,113 @@ func main() {
 			return cmdCallback(ctx, api, cmdArgs[0], cmdArgs[1], cmdArgs[2])
 		case "logout":
 			return cmdLogout(ctx, client)
+		case "forward":
+			if len(cmdArgs) < 3 {
+				return fmt.Errorf("usage: tgctl forward <from_chat> <to_chat> <msg_id>")
+			}
+			return cmdForward(ctx, api, cmdArgs[0], cmdArgs[1], cmdArgs[2])
+		case "edit":
+			if len(cmdArgs) < 3 {
+				return fmt.Errorf("usage: tgctl edit <chat> <msg_id> <text>")
+			}
+			return cmdEdit(ctx, api, cmdArgs[0], cmdArgs[1], strings.Join(cmdArgs[2:], " "))
+		case "delete":
+			if len(cmdArgs) < 2 {
+				return fmt.Errorf("usage: tgctl delete <chat> <msg_id>")
+			}
+			return cmdDelete(ctx, api, cmdArgs[0], cmdArgs[1])
+		case "pin":
+			if len(cmdArgs) < 2 {
+				return fmt.Errorf("usage: tgctl pin <chat> <msg_id>")
+			}
+			return cmdPin(ctx, api, cmdArgs[0], cmdArgs[1])
+		case "unpin":
+			if len(cmdArgs) < 1 {
+				return fmt.Errorf("usage: tgctl unpin <chat> [msg_id]")
+			}
+			msgID := ""
+			if len(cmdArgs) > 1 {
+				msgID = cmdArgs[1]
+			}
+			return cmdUnpin(ctx, api, cmdArgs[0], msgID)
+		case "read":
+			if len(cmdArgs) < 1 {
+				return fmt.Errorf("usage: tgctl read <chat>")
+			}
+			return cmdRead(ctx, api, cmdArgs[0])
+		case "search-msg":
+			if len(cmdArgs) < 2 {
+				return fmt.Errorf("usage: tgctl search-msg <chat> <query>")
+			}
+			return cmdSearchMsg(ctx, api, cmdArgs[0], strings.Join(cmdArgs[1:], " "))
+		case "members":
+			if len(cmdArgs) < 1 {
+				return fmt.Errorf("usage: tgctl members <chat> [limit]")
+			}
+			limit := 50
+			if len(cmdArgs) > 1 {
+				fmt.Sscanf(cmdArgs[1], "%d", &limit)
+			}
+			return cmdMembers(ctx, api, cmdArgs[0], limit)
+		case "join":
+			if len(cmdArgs) < 1 {
+				return fmt.Errorf("usage: tgctl join <invite_link_or_username>")
+			}
+			return cmdJoin(ctx, api, cmdArgs[0])
+		case "leave":
+			if len(cmdArgs) < 1 {
+				return fmt.Errorf("usage: tgctl leave <chat>")
+			}
+			return cmdLeave(ctx, api, cmdArgs[0])
+		case "kick":
+			if len(cmdArgs) < 2 {
+				return fmt.Errorf("usage: tgctl kick <chat> <user>")
+			}
+			return cmdKick(ctx, api, cmdArgs[0], cmdArgs[1])
+		case "invite":
+			if len(cmdArgs) < 2 {
+				return fmt.Errorf("usage: tgctl invite <chat> <user>")
+			}
+			return cmdInvite(ctx, api, cmdArgs[0], cmdArgs[1])
+		case "block":
+			if len(cmdArgs) < 1 {
+				return fmt.Errorf("usage: tgctl block <user>")
+			}
+			return cmdBlock(ctx, api, cmdArgs[0])
+		case "unblock":
+			if len(cmdArgs) < 1 {
+				return fmt.Errorf("usage: tgctl unblock <user>")
+			}
+			return cmdUnblock(ctx, api, cmdArgs[0])
+		case "resolve":
+			if len(cmdArgs) < 1 {
+				return fmt.Errorf("usage: tgctl resolve <username>")
+			}
+			return cmdResolve(ctx, api, cmdArgs[0])
+		case "sendfile":
+			if len(cmdArgs) < 2 {
+				return fmt.Errorf("usage: tgctl sendfile <chat> <file>")
+			}
+			return cmdSendFile(ctx, api, cmdArgs[0], cmdArgs[1])
+		case "download":
+			if len(cmdArgs) < 2 {
+				return fmt.Errorf("usage: tgctl download <chat> <msg_id>")
+			}
+			return cmdDownload(ctx, api, cmdArgs[0], cmdArgs[1])
+		case "startbot":
+			if len(cmdArgs) < 2 {
+				return fmt.Errorf("usage: tgctl startbot <chat> <bot> [param]")
+			}
+			param := ""
+			if len(cmdArgs) > 2 {
+				param = cmdArgs[2]
+			}
+			return cmdStartBot(ctx, api, cmdArgs[0], cmdArgs[1], param)
+		case "typing":
+			if len(cmdArgs) < 1 {
+				return fmt.Errorf("usage: tgctl typing <chat>")
+			}
+			return cmdTyping(ctx, api, cmdArgs[0])
 		default:
 			return fmt.Errorf("unknown command: %s", cmd)
 		}
@@ -598,4 +728,643 @@ func resolvePeer(ctx context.Context, api *tg.Client, chatArg string) (tg.InputP
 		}
 	}
 	return nil, fmt.Errorf("cannot resolve: %s", chatArg)
+}
+
+func randomID() int64 {
+	n, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
+	return n.Int64()
+}
+
+func peerToInputChannel(peer tg.InputPeerClass) (*tg.InputChannel, bool) {
+	if p, ok := peer.(*tg.InputPeerChannel); ok {
+		return &tg.InputChannel{ChannelID: p.ChannelID, AccessHash: p.AccessHash}, true
+	}
+	return nil, false
+}
+
+func peerToInputUser(ctx context.Context, api *tg.Client, userArg string) (tg.InputUserClass, error) {
+	peer, err := resolvePeer(ctx, api, userArg)
+	if err != nil {
+		return nil, err
+	}
+	if p, ok := peer.(*tg.InputPeerUser); ok {
+		return &tg.InputUser{UserID: p.UserID, AccessHash: p.AccessHash}, nil
+	}
+	return nil, fmt.Errorf("not a user: %s", userArg)
+}
+
+func cmdForward(ctx context.Context, api *tg.Client, fromArg, toArg, msgIDArg string) error {
+	fromPeer, err := resolvePeer(ctx, api, fromArg)
+	if err != nil {
+		return fmt.Errorf("resolve from: %w", err)
+	}
+	toPeer, err := resolvePeer(ctx, api, toArg)
+	if err != nil {
+		return fmt.Errorf("resolve to: %w", err)
+	}
+	msgID, err := strconv.Atoi(msgIDArg)
+	if err != nil {
+		return fmt.Errorf("invalid msg_id: %w", err)
+	}
+	_, err = api.MessagesForwardMessages(ctx, &tg.MessagesForwardMessagesRequest{
+		FromPeer: fromPeer,
+		ToPeer:   toPeer,
+		ID:       []int{msgID},
+		RandomID: []int64{randomID()},
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println("Message forwarded.")
+	return nil
+}
+
+func cmdEdit(ctx context.Context, api *tg.Client, chatArg, msgIDArg, text string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	msgID, err := strconv.Atoi(msgIDArg)
+	if err != nil {
+		return fmt.Errorf("invalid msg_id: %w", err)
+	}
+	_, err = api.MessagesEditMessage(ctx, &tg.MessagesEditMessageRequest{
+		Peer:    peer,
+		ID:      msgID,
+		Message: text,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println("Message edited.")
+	return nil
+}
+
+func cmdDelete(ctx context.Context, api *tg.Client, chatArg, msgIDArg string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	msgID, err := strconv.Atoi(msgIDArg)
+	if err != nil {
+		return fmt.Errorf("invalid msg_id: %w", err)
+	}
+	if ch, ok := peerToInputChannel(peer); ok {
+		_, err = api.ChannelsDeleteMessages(ctx, &tg.ChannelsDeleteMessagesRequest{
+			Channel: ch,
+			ID:      []int{msgID},
+		})
+	} else {
+		_, err = api.MessagesDeleteMessages(ctx, &tg.MessagesDeleteMessagesRequest{
+			ID:     []int{msgID},
+			Revoke: true,
+		})
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println("Message deleted.")
+	return nil
+}
+
+func cmdPin(ctx context.Context, api *tg.Client, chatArg, msgIDArg string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	msgID, err := strconv.Atoi(msgIDArg)
+	if err != nil {
+		return fmt.Errorf("invalid msg_id: %w", err)
+	}
+	_, err = api.MessagesUpdatePinnedMessage(ctx, &tg.MessagesUpdatePinnedMessageRequest{
+		Peer: peer,
+		ID:   msgID,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println("Message pinned.")
+	return nil
+}
+
+func cmdUnpin(ctx context.Context, api *tg.Client, chatArg, msgIDArg string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	if msgIDArg == "" {
+		_, err = api.MessagesUnpinAllMessages(ctx, &tg.MessagesUnpinAllMessagesRequest{
+			Peer: peer,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Println("All messages unpinned.")
+	} else {
+		msgID, err := strconv.Atoi(msgIDArg)
+		if err != nil {
+			return fmt.Errorf("invalid msg_id: %w", err)
+		}
+		_, err = api.MessagesUpdatePinnedMessage(ctx, &tg.MessagesUpdatePinnedMessageRequest{
+			Peer:  peer,
+			ID:    msgID,
+			Unpin: true,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Println("Message unpinned.")
+	}
+	return nil
+}
+
+func cmdRead(ctx context.Context, api *tg.Client, chatArg string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	if ch, ok := peerToInputChannel(peer); ok {
+		_, err = api.ChannelsReadHistory(ctx, &tg.ChannelsReadHistoryRequest{
+			Channel: ch,
+			MaxID:   0,
+		})
+	} else {
+		_, err = api.MessagesReadHistory(ctx, &tg.MessagesReadHistoryRequest{
+			Peer:  peer,
+			MaxID: 0,
+		})
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println("Marked as read.")
+	return nil
+}
+
+func cmdSearchMsg(ctx context.Context, api *tg.Client, chatArg, query string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	result, err := api.MessagesSearch(ctx, &tg.MessagesSearchRequest{
+		Peer:     peer,
+		Q:        query,
+		Filter:   &tg.InputMessagesFilterEmpty{},
+		Limit:    20,
+		MinDate:  0,
+		MaxDate:  0,
+		OffsetID: 0,
+	})
+	if err != nil {
+		return err
+	}
+	var messages []tg.MessageClass
+	switch r := result.(type) {
+	case *tg.MessagesMessages:
+		messages = r.Messages
+	case *tg.MessagesMessagesSlice:
+		messages = r.Messages
+	case *tg.MessagesChannelMessages:
+		messages = r.Messages
+	}
+	for _, m := range messages {
+		msg, ok := m.(*tg.Message)
+		if !ok {
+			continue
+		}
+		t := time.Unix(int64(msg.Date), 0).Format("01-02 15:04")
+		text := msg.Message
+		if text == "" {
+			text = "[non-text]"
+		}
+		fmt.Printf("[%s] #%d: %s\n", t, msg.ID, text)
+	}
+	if len(messages) == 0 {
+		fmt.Println("No results.")
+	}
+	return nil
+}
+
+func cmdMembers(ctx context.Context, api *tg.Client, chatArg string, limit int) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	if ch, ok := peerToInputChannel(peer); ok {
+		participants, err := api.ChannelsGetParticipants(ctx, &tg.ChannelsGetParticipantsRequest{
+			Channel: ch,
+			Filter:  &tg.ChannelParticipantsRecent{},
+			Limit:   limit,
+		})
+		if err != nil {
+			return err
+		}
+		if p, ok := participants.(*tg.ChannelsChannelParticipants); ok {
+			for _, u := range p.Users {
+				if user, ok := u.(*tg.User); ok {
+					name := strings.TrimSpace(user.FirstName + " " + user.LastName)
+					fmt.Printf("%d  %s\n", user.ID, name)
+				}
+			}
+		}
+	} else if p, ok := peer.(*tg.InputPeerChat); ok {
+		full, err := api.MessagesGetFullChat(ctx, p.ChatID)
+		if err != nil {
+			return err
+		}
+		for _, u := range full.Users {
+			if user, ok := u.(*tg.User); ok {
+				name := strings.TrimSpace(user.FirstName + " " + user.LastName)
+				fmt.Printf("%d  %s\n", user.ID, name)
+			}
+		}
+	} else {
+		return fmt.Errorf("not a group or channel")
+	}
+	return nil
+}
+
+func cmdJoin(ctx context.Context, api *tg.Client, target string) error {
+	if strings.Contains(target, "+") || strings.Contains(target, "joinchat") {
+		// invite link
+		hash := target
+		if idx := strings.LastIndex(hash, "+"); idx >= 0 {
+			hash = hash[idx+1:]
+		} else if idx := strings.LastIndex(hash, "/"); idx >= 0 {
+			hash = hash[idx+1:]
+		}
+		_, err := api.MessagesImportChatInvite(ctx, hash)
+		if err != nil {
+			return err
+		}
+	} else {
+		peer, err := resolvePeer(ctx, api, target)
+		if err != nil {
+			return fmt.Errorf("resolve: %w", err)
+		}
+		if ch, ok := peerToInputChannel(peer); ok {
+			_, err = api.ChannelsJoinChannel(ctx, ch)
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("not a channel/supergroup")
+		}
+	}
+	fmt.Println("Joined.")
+	return nil
+}
+
+func cmdLeave(ctx context.Context, api *tg.Client, chatArg string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	if ch, ok := peerToInputChannel(peer); ok {
+		_, err = api.ChannelsLeaveChannel(ctx, ch)
+	} else if p, ok := peer.(*tg.InputPeerChat); ok {
+		_, err = api.MessagesDeleteChatUser(ctx, &tg.MessagesDeleteChatUserRequest{
+			ChatID: p.ChatID,
+			UserID: &tg.InputUserSelf{},
+		})
+	} else {
+		return fmt.Errorf("not a group or channel")
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println("Left.")
+	return nil
+}
+
+func cmdKick(ctx context.Context, api *tg.Client, chatArg, userArg string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	inputUser, err := peerToInputUser(ctx, api, userArg)
+	if err != nil {
+		return fmt.Errorf("resolve user: %w", err)
+	}
+	if ch, ok := peerToInputChannel(peer); ok {
+		userPeer, err := resolvePeer(ctx, api, userArg)
+		if err != nil {
+			return fmt.Errorf("resolve user peer: %w", err)
+		}
+		_, err = api.ChannelsEditBanned(ctx, &tg.ChannelsEditBannedRequest{
+			Channel:      ch,
+			Participant:  userPeer,
+			BannedRights: tg.ChatBannedRights{ViewMessages: true, UntilDate: 0},
+		})
+	} else if p, ok := peer.(*tg.InputPeerChat); ok {
+		_, err = api.MessagesDeleteChatUser(ctx, &tg.MessagesDeleteChatUserRequest{
+			ChatID: p.ChatID,
+			UserID: inputUser,
+		})
+	} else {
+		return fmt.Errorf("not a group or channel")
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println("User kicked.")
+	return nil
+}
+
+func cmdInvite(ctx context.Context, api *tg.Client, chatArg, userArg string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	inputUser, err := peerToInputUser(ctx, api, userArg)
+	if err != nil {
+		return fmt.Errorf("resolve user: %w", err)
+	}
+	if ch, ok := peerToInputChannel(peer); ok {
+		_, err = api.ChannelsInviteToChannel(ctx, &tg.ChannelsInviteToChannelRequest{
+			Channel: ch,
+			Users:   []tg.InputUserClass{inputUser},
+		})
+	} else if p, ok := peer.(*tg.InputPeerChat); ok {
+		_, err = api.MessagesAddChatUser(ctx, &tg.MessagesAddChatUserRequest{
+			ChatID:   p.ChatID,
+			UserID:   inputUser,
+			FwdLimit: 100,
+		})
+	} else {
+		return fmt.Errorf("not a group or channel")
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println("User invited.")
+	return nil
+}
+
+func cmdBlock(ctx context.Context, api *tg.Client, userArg string) error {
+	peer, err := resolvePeer(ctx, api, userArg)
+	if err != nil {
+		return fmt.Errorf("resolve user: %w", err)
+	}
+	_, err = api.ContactsBlock(ctx, &tg.ContactsBlockRequest{
+		ID: peer,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println("User blocked.")
+	return nil
+}
+
+func cmdUnblock(ctx context.Context, api *tg.Client, userArg string) error {
+	peer, err := resolvePeer(ctx, api, userArg)
+	if err != nil {
+		return fmt.Errorf("resolve user: %w", err)
+	}
+	_, err = api.ContactsUnblock(ctx, &tg.ContactsUnblockRequest{
+		ID: peer,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println("User unblocked.")
+	return nil
+}
+
+func cmdResolve(ctx context.Context, api *tg.Client, username string) error {
+	username = strings.TrimPrefix(username, "@")
+	resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+		Username: username,
+	})
+	if err != nil {
+		return err
+	}
+	for _, u := range resolved.Users {
+		if user, ok := u.(*tg.User); ok {
+			name := strings.TrimSpace(user.FirstName + " " + user.LastName)
+			fmt.Printf("User: %d  %s (@%s)\n", user.ID, name, user.Username)
+		}
+	}
+	for _, c := range resolved.Chats {
+		switch v := c.(type) {
+		case *tg.Chat:
+			fmt.Printf("Chat: -%d  %s\n", v.ID, v.Title)
+		case *tg.Channel:
+			fmt.Printf("Channel: -%d  %s (@%s)\n", v.ID, v.Title, v.Username)
+		}
+	}
+	return nil
+}
+
+func cmdSendFile(ctx context.Context, api *tg.Client, chatArg, filePath string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("open file: %w", err)
+	}
+	defer f.Close()
+
+	u := uploader.NewUploader(api)
+	uploaded, err := u.FromReader(ctx, filepath.Base(filePath), f)
+	if err != nil {
+		return fmt.Errorf("upload: %w", err)
+	}
+
+	_, err = api.MessagesSendMedia(ctx, &tg.MessagesSendMediaRequest{
+		Peer: peer,
+		Media: &tg.InputMediaUploadedDocument{
+			File:     uploaded,
+			MimeType: "application/octet-stream",
+			Attributes: []tg.DocumentAttributeClass{
+				&tg.DocumentAttributeFilename{FileName: filepath.Base(filePath)},
+			},
+		},
+		RandomID: randomID(),
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println("File sent.")
+	return nil
+}
+
+func cmdDownload(ctx context.Context, api *tg.Client, chatArg, msgIDArg string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	msgID, err := strconv.Atoi(msgIDArg)
+	if err != nil {
+		return fmt.Errorf("invalid msg_id: %w", err)
+	}
+
+	// get the message
+	var messages tg.MessagesMessagesClass
+	if ch, ok := peerToInputChannel(peer); ok {
+		messages, err = api.ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{
+			Channel: ch,
+			ID:      []tg.InputMessageClass{&tg.InputMessageID{ID: msgID}},
+		})
+	} else {
+		messages, err = api.MessagesGetMessages(ctx, []tg.InputMessageClass{&tg.InputMessageID{ID: msgID}})
+	}
+	if err != nil {
+		return fmt.Errorf("get message: %w", err)
+	}
+
+	var msgList []tg.MessageClass
+	switch m := messages.(type) {
+	case *tg.MessagesMessages:
+		msgList = m.Messages
+	case *tg.MessagesMessagesSlice:
+		msgList = m.Messages
+	case *tg.MessagesChannelMessages:
+		msgList = m.Messages
+	}
+	if len(msgList) == 0 {
+		return fmt.Errorf("message not found")
+	}
+
+	msg, ok := msgList[0].(*tg.Message)
+	if !ok {
+		return fmt.Errorf("not a regular message")
+	}
+
+	if msg.Media == nil {
+		return fmt.Errorf("message has no media")
+	}
+
+	var location tg.InputFileLocationClass
+	var fileName string
+	var fileSize int64
+
+	switch media := msg.Media.(type) {
+	case *tg.MessageMediaDocument:
+		doc, ok := media.Document.(*tg.Document)
+		if !ok {
+			return fmt.Errorf("no document")
+		}
+		location = &tg.InputDocumentFileLocation{
+			ID:            doc.ID,
+			AccessHash:    doc.AccessHash,
+			FileReference: doc.FileReference,
+		}
+		fileSize = doc.Size
+		fileName = fmt.Sprintf("file_%d", doc.ID)
+		for _, attr := range doc.Attributes {
+			if fn, ok := attr.(*tg.DocumentAttributeFilename); ok {
+				fileName = fn.FileName
+			}
+		}
+	case *tg.MessageMediaPhoto:
+		photo, ok := media.Photo.(*tg.Photo)
+		if !ok {
+			return fmt.Errorf("no photo")
+		}
+		// get largest size
+		var largest *tg.PhotoSize
+		for _, s := range photo.Sizes {
+			if ps, ok := s.(*tg.PhotoSize); ok {
+				if largest == nil || ps.Size > largest.Size {
+					largest = ps
+				}
+			}
+		}
+		if largest == nil {
+			return fmt.Errorf("no photo size found")
+		}
+		location = &tg.InputPhotoFileLocation{
+			ID:            photo.ID,
+			AccessHash:    photo.AccessHash,
+			FileReference: photo.FileReference,
+			ThumbSize:     largest.Type,
+		}
+		fileSize = int64(largest.Size)
+		fileName = fmt.Sprintf("photo_%d.jpg", photo.ID)
+	default:
+		return fmt.Errorf("unsupported media type")
+	}
+
+	// download
+	out, err := os.Create(fileName)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer out.Close()
+
+	var offset int64
+	const chunkSize = 512 * 1024
+	for {
+		result, err := api.UploadGetFile(ctx, &tg.UploadGetFileRequest{
+			Location: location,
+			Offset:   offset,
+			Limit:    chunkSize,
+		})
+		if err != nil {
+			return fmt.Errorf("download chunk: %w", err)
+		}
+		file, ok := result.(*tg.UploadFile)
+		if !ok {
+			return fmt.Errorf("unexpected response type")
+		}
+		if len(file.Bytes) == 0 {
+			break
+		}
+		out.Write(file.Bytes)
+		offset += int64(len(file.Bytes))
+		if fileSize > 0 {
+			fmt.Fprintf(os.Stderr, "\rDownloading... %d%%", offset*100/fileSize)
+		}
+		if len(file.Bytes) < chunkSize {
+			break
+		}
+	}
+	fmt.Fprintf(os.Stderr, "\n")
+	fmt.Printf("Downloaded: %s (%d bytes)\n", fileName, offset)
+	return nil
+}
+
+func cmdStartBot(ctx context.Context, api *tg.Client, chatArg, botArg, param string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	botUser, err := peerToInputUser(ctx, api, botArg)
+	if err != nil {
+		return fmt.Errorf("resolve bot: %w", err)
+	}
+	if param == "" {
+		param = "start"
+	}
+	_, err = api.MessagesStartBot(ctx, &tg.MessagesStartBotRequest{
+		Bot:      botUser,
+		Peer:     peer,
+		RandomID: randomID(),
+		StartParam: param,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println("Bot started.")
+	return nil
+}
+
+func cmdTyping(ctx context.Context, api *tg.Client, chatArg string) error {
+	peer, err := resolvePeer(ctx, api, chatArg)
+	if err != nil {
+		return fmt.Errorf("resolve chat: %w", err)
+	}
+	_, err = api.MessagesSetTyping(ctx, &tg.MessagesSetTypingRequest{
+		Peer:   peer,
+		Action: &tg.SendMessageTypingAction{},
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println("Typing...")
+	return nil
 }

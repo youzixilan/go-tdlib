@@ -4,14 +4,12 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
   TDLIB_COMMIT: "0ae923c493bceb75433de2682ba8ae29cc7bf88d"
-  VCPKG_COMMIT: "bf27d5f65a6352c13ec2b7fdf79f7a0f0846a79f"
 
 jobs:
   build:

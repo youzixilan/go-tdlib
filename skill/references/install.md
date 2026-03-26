@@ -1,5 +1,32 @@
 # tgctl Installation Guide
 
+## Option 1: Download Pre-built Binary (Recommended)
+
+Download from [GitHub Releases](https://github.com/youzixilan/go-tdlib/releases/latest):
+
+```bash
+# macOS Apple Silicon
+curl -L https://github.com/youzixilan/go-tdlib/releases/latest/download/tgctl-darwin-arm64.tar.gz | tar xz
+# macOS Intel
+curl -L https://github.com/youzixilan/go-tdlib/releases/latest/download/tgctl-darwin-amd64.tar.gz | tar xz
+# Linux amd64
+curl -L https://github.com/youzixilan/go-tdlib/releases/latest/download/tgctl-linux-amd64.tar.gz | tar xz
+```
+
+The archive includes `tgctl` binary and `libtdjson` dynamic library. Put them somewhere on your PATH:
+
+```bash
+mkdir -p ~/.local/bin ~/.local/lib
+mv tgctl-* ~/.local/bin/tgctl
+mv libtdjson* ~/.local/lib/
+# macOS
+install_name_tool -add_rpath ~/.local/lib ~/.local/bin/tgctl
+# Linux: add to ~/.bashrc
+export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH
+```
+
+## Option 2: Build from Source
+
 ## Dependencies
 
 ### macOS

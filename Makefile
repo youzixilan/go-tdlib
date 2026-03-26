@@ -21,5 +21,7 @@ codegen:
 	go run ./cmd/codegen/ $(TDLIB_PREFIX)/../td/td/generate/scheme/td_api.tl ./tdapi/
 	@echo "Code generation complete"
 
+SKILL_VERSION ?= 1.3.0
+
 publish-skill:
-	clawhub publish ./skill --slug telegram-cli-tdlib --name "Telegram CLI (TDLib)" --tags latest
+	clawhub publish ./skill --slug telegram-cli-tdlib --name "Telegram CLI (TDLib)" --version $(SKILL_VERSION) --tags latest

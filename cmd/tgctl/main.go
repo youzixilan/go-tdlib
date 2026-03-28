@@ -24,6 +24,36 @@ import (
 // Global channel for listen mode
 var listenChan chan *tg.UpdateNewMessage
 
+// Global peer cache directory
+var peerCacheDir string
+
+// savePeerCache saves user access hash to local cache file
+func savePeerCache(userID, accessHash int64) {
+	if peerCacheDir == "" {
+		return
+	}
+	os.MkdirAll(peerCacheDir, 0700)
+	filePath := filepath.Join(peerCacheDir, fmt.Sprintf("%d", userID))
+	os.WriteFile(filePath, []byte(fmt.Sprintf("%d", accessHash)), 0600)
+}
+
+// loadPeerCache loads user access hash from local cache file
+func loadPeerCache(userID int64) (int64, bool) {
+	if peerCacheDir == "" {
+		return 0, false
+	}
+	filePath := filepath.Join(peerCacheDir, fmt.Sprintf("%d", userID))
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return 0, false
+	}
+	hash, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return hash, true
+}
+
 // listenUpdateHandler implements telegram.UpdateHandler
 type listenUpdateHandler struct {
 	ch chan *tg.UpdateNewMessage
@@ -31,16 +61,18 @@ type listenUpdateHandler struct {
 
 func (h *listenUpdateHandler) Handle(ctx context.Context, u tg.UpdatesClass) error {
 	var extractUpdates []tg.UpdateClass
+	var users []tg.UserClass
 
 	switch v := u.(type) {
 	case *tg.Updates:
 		extractUpdates = v.Updates
+		users = v.Users
 	case *tg.UpdatesCombined:
 		extractUpdates = v.Updates
+		users = v.Users
 	case *tg.UpdateShort:
 		extractUpdates = []tg.UpdateClass{v.Update}
 	case *tg.UpdateShortMessage:
-		// Direct message from user
 		msg := &tg.UpdateNewMessage{
 			Message: &tg.Message{
 				ID:      v.ID,
@@ -72,6 +104,13 @@ func (h *listenUpdateHandler) Handle(ctx context.Context, u tg.UpdatesClass) err
 		default:
 		}
 		return nil
+	}
+
+	// Cache access hashes from users in the update
+	for _, u := range users {
+		if user, ok := u.(*tg.User); ok && user.AccessHash != 0 {
+			savePeerCache(user.ID, user.AccessHash)
+		}
 	}
 
 	for _, update := range extractUpdates {
@@ -182,6 +221,7 @@ func main() {
 	}
 	dataDir = filepath.Join(dataDir, profile)
 	os.MkdirAll(dataDir, 0700)
+	peerCacheDir = filepath.Join(dataDir, "peers")
 
 	sessionFile := filepath.Join(dataDir, "session.json")
 	storage := &session.FileStorage{Path: sessionFile}
@@ -665,6 +705,7 @@ func cmdContacts(ctx context.Context, api *tg.Client) error {
 }
 
 func cmdListen(ctx context.Context, client *telegram.Client, args []string) error {
+	api := client.API()
 	var filterUser, filterChat int64
 	for i := 0; i < len(args)-1; i++ {
 		switch args[i] {
@@ -684,6 +725,9 @@ func cmdListen(ctx context.Context, client *telegram.Client, args []string) erro
 	} else {
 		fmt.Fprintln(os.Stderr, "Listening for all messages... (Ctrl+C to stop)")
 	}
+
+	// Track which users we've already resolved
+	resolved := make(map[int64]bool)
 
 	for {
 		select {
@@ -717,6 +761,47 @@ func cmdListen(ctx context.Context, client *telegram.Client, args []string) erro
 			}
 			if filterChat != 0 && chatID != filterChat {
 				continue
+			}
+
+			// Resolve and cache sender's access hash if not already done
+			if senderID != 0 && !resolved[senderID] {
+				// Try UsersGetUsers first
+				users, err := api.UsersGetUsers(ctx, []tg.InputUserClass{
+					&tg.InputUser{UserID: senderID},
+				})
+				if err == nil && len(users) > 0 {
+					if u, ok := users[0].(*tg.User); ok && u.AccessHash != 0 {
+						savePeerCache(u.ID, u.AccessHash)
+						resolved[senderID] = true
+					}
+				}
+				// If still not resolved, try getting from dialogs
+				if !resolved[senderID] {
+					dialogs, err := api.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
+						OffsetPeer: &tg.InputPeerEmpty{},
+						Limit:      50,
+					})
+					if err == nil {
+						var dialogUsers []tg.UserClass
+						switch d := dialogs.(type) {
+						case *tg.MessagesDialogs:
+							dialogUsers = d.Users
+						case *tg.MessagesDialogsSlice:
+							dialogUsers = d.Users
+						}
+						for _, u := range dialogUsers {
+							if user, ok := u.(*tg.User); ok && user.AccessHash != 0 {
+								savePeerCache(user.ID, user.AccessHash)
+								if user.ID == senderID {
+									resolved[senderID] = true
+								}
+							}
+						}
+					}
+				}
+				if !resolved[senderID] {
+					resolved[senderID] = true // don't retry
+				}
 			}
 
 			text := m.Message
@@ -822,11 +907,18 @@ func resolvePeer(ctx context.Context, api *tg.Client, chatArg string) (tg.InputP
 		})
 		if err == nil && len(users) > 0 {
 			if u, ok := users[0].(*tg.User); ok {
+				if u.AccessHash != 0 {
+					savePeerCache(u.ID, u.AccessHash)
+				}
 				return &tg.InputPeerUser{
 					UserID:     u.ID,
 					AccessHash: u.AccessHash,
 				}, nil
 			}
+		}
+		// Fallback: try peer cache
+		if hash, ok := loadPeerCache(id); ok {
+			return &tg.InputPeerUser{UserID: id, AccessHash: hash}, nil
 		}
 		return &tg.InputPeerUser{UserID: id}, nil
 	}

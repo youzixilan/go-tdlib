@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"os"
@@ -19,6 +20,70 @@ import (
 	"github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
 )
+
+// Global channel for listen mode
+var listenChan chan *tg.UpdateNewMessage
+
+// listenUpdateHandler implements telegram.UpdateHandler
+type listenUpdateHandler struct {
+	ch chan *tg.UpdateNewMessage
+}
+
+func (h *listenUpdateHandler) Handle(ctx context.Context, u tg.UpdatesClass) error {
+	var extractUpdates []tg.UpdateClass
+
+	switch v := u.(type) {
+	case *tg.Updates:
+		extractUpdates = v.Updates
+	case *tg.UpdatesCombined:
+		extractUpdates = v.Updates
+	case *tg.UpdateShort:
+		extractUpdates = []tg.UpdateClass{v.Update}
+	case *tg.UpdateShortMessage:
+		// Direct message from user
+		msg := &tg.UpdateNewMessage{
+			Message: &tg.Message{
+				ID:      v.ID,
+				FromID:  &tg.PeerUser{UserID: v.UserID},
+				PeerID:  &tg.PeerUser{UserID: v.UserID},
+				Message: v.Message,
+				Date:    v.Date,
+				Out:     v.Out,
+			},
+		}
+		select {
+		case h.ch <- msg:
+		default:
+		}
+		return nil
+	case *tg.UpdateShortChatMessage:
+		msg := &tg.UpdateNewMessage{
+			Message: &tg.Message{
+				ID:      v.ID,
+				FromID:  &tg.PeerUser{UserID: v.FromID},
+				PeerID:  &tg.PeerChat{ChatID: v.ChatID},
+				Message: v.Message,
+				Date:    v.Date,
+				Out:     v.Out,
+			},
+		}
+		select {
+		case h.ch <- msg:
+		default:
+		}
+		return nil
+	}
+
+	for _, update := range extractUpdates {
+		if newMsg, ok := update.(*tg.UpdateNewMessage); ok {
+			select {
+			case h.ch <- newMsg:
+			default:
+			}
+		}
+	}
+	return nil
+}
 
 const usage = `tgctl - Telegram CLI (pure Go, powered by gotd/td)
 
@@ -126,9 +191,21 @@ func main() {
 
 	ctx := context.Background()
 
-	client := telegram.NewClient(apiID, apiHash, telegram.Options{
+	// Set up update handler for listen command
+	var listenHandler *listenUpdateHandler
+	if cmd == "listen" {
+		listenChan = make(chan *tg.UpdateNewMessage, 100)
+		listenHandler = &listenUpdateHandler{ch: listenChan}
+	}
+
+	opts := telegram.Options{
 		SessionStorage: storage,
-	})
+	}
+	if listenHandler != nil {
+		opts.UpdateHandler = listenHandler
+	}
+
+	client := telegram.NewClient(apiID, apiHash, opts)
 
 	if err := client.Run(ctx, func(ctx context.Context) error {
 		status, err := client.Auth().Status(ctx)
@@ -608,12 +685,11 @@ func cmdListen(ctx context.Context, client *telegram.Client, args []string) erro
 		fmt.Fprintln(os.Stderr, "Listening for all messages... (Ctrl+C to stop)")
 	}
 
-	// Use raw updates via the gap manager
-	api := client.API()
-	dispatcher := make(chan *tg.UpdateNewMessage, 100)
-
-	go func() {
-		for msg := range dispatcher {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case msg := <-listenChan:
 			m, ok := msg.Message.(*tg.Message)
 			if !ok {
 				continue
@@ -643,25 +719,23 @@ func cmdListen(ctx context.Context, client *telegram.Client, args []string) erro
 				continue
 			}
 
-			t := time.Unix(int64(m.Date), 0).Format("15:04:05")
 			text := m.Message
 			if text == "" {
 				text = "[non-text]"
 			}
-			direction := "←"
-			if m.Out {
-				direction = "→"
-			}
-			fmt.Printf("[%s] %s %d | %d: %s\n", t, direction, chatID, senderID, text)
-		}
-	}()
 
-	// Simple polling loop for updates
-	_ = api
-	_ = dispatcher
-	// Block forever, updates come through client's update handler
-	<-ctx.Done()
-	return nil
+			out := map[string]interface{}{
+				"chat_id":   chatID,
+				"sender_id": senderID,
+				"text":      text,
+				"date":      m.Date,
+				"msg_id":    m.ID,
+				"out":       m.Out,
+			}
+			jsonBytes, _ := json.Marshal(out)
+			fmt.Println(string(jsonBytes))
+		}
+	}
 }
 
 func cmdCallback(ctx context.Context, api *tg.Client, chatArg, msgIDArg, data string) error {
